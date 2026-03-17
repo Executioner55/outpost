@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OUTPOST // CO-OP</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<style>
+:root{
+  --bg:#06090d;--panel:#0b1118;--border:#172030;
+  --p1:#00e5ff;--p2:#ff6b35;--enemy:#ff2244;
+  --core:#ffd700;--green:#39ff14;--text:#6a8fa8;
+  --white:#dff0f8;--dim:#243444;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--white);font-family:'Share Tech Mono',monospace;
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;overflow:hidden;}
+body::before{content:'';position:fixed;inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 39px,#0e1f2c08 40px),
+    repeating-linear-gradient(90deg,transparent,transparent 39px,#0e1f2c08 40px);
+  pointer-events:none;z-index:0;}
+
+/* LOBBY */
+#lobby{position:relative;z-index:10;width:480px;padding:0 20px;text-align:center;}
+#lobby h1{font-family:'Orbitron',sans-serif;font-size:3.2rem;font-weight:900;
+  letter-spacing:0.18em;text-shadow:0 0 40px #00e5ff44,0 0 100px #00e5ff11;margin-bottom:2px;}
+.tagline{font-size:0.65rem;letter-spacing:0.38em;color:var(--dim);margin-bottom:36px;}
+.card{background:var(--panel);border:1px solid var(--border);padding:22px 26px;margin-bottom:12px;text-align:left;}
+.clabel{font-family:'Orbitron',sans-serif;font-size:0.56rem;letter-spacing:0.3em;color:var(--dim);margin-bottom:14px;}
+.btn{font-family:'Share Tech Mono',monospace;font-size:0.83rem;letter-spacing:0.15em;
+  padding:10px 20px;border:1px solid;cursor:pointer;background:transparent;
+  transition:background .12s,color .12s,box-shadow .12s;text-transform:uppercase;white-space:nowrap;}
+.btn:disabled{opacity:.28;pointer-events:none;}
+.c1{color:var(--p1);border-color:var(--p1);}.c1:hover{background:var(--p1);color:var(--bg);box-shadow:0 0 16px #00e5ff44;}
+.c2{color:var(--p2);border-color:var(--p2);}.c2:hover{background:var(--p2);color:var(--bg);box-shadow:0 0 16px #ff6b3544;}
+.cg{color:var(--core);border-color:var(--core);}.cg:hover{background:var(--core);color:var(--bg);box-shadow:0 0 16px #ffd70044;}
+.cr{color:var(--enemy);border-color:var(--enemy);}.cr:hover{background:var(--enemy);color:var(--bg);box-shadow:0 0 16px #ff224444;}
+.cv{color:#a855f7;border-color:#a855f7;}.cv:hover{background:#a855f7;color:var(--bg);box-shadow:0 0 16px #a855f744;}
+.sm{font-size:.68rem;padding:5px 11px;letter-spacing:.1em;}
+.hrow{display:flex;align-items:center;gap:10px;}
+#roomDisplay{margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
+.coderow{display:flex;align-items:center;gap:10px;margin-bottom:5px;}
+.roomcode{font-family:'Orbitron',sans-serif;font-size:2.4rem;letter-spacing:.4em;
+  color:var(--p1);text-shadow:0 0 18px #00e5ff33;cursor:pointer;user-select:all;}
+.rhint{font-size:.62rem;color:var(--dim);letter-spacing:.1em;}
+.jrow{display:flex;gap:8px;}
+.jrow input{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--white);
+  font-family:'Share Tech Mono',monospace;font-size:1.5rem;letter-spacing:.35em;
+  text-align:center;text-transform:uppercase;padding:9px;outline:none;transition:border-color .2s;}
+.jrow input:focus{border-color:var(--p2);}
+.jrow input::placeholder{color:#192a38;}
+#status{font-size:.7rem;letter-spacing:.15em;min-height:18px;margin-top:10px;color:var(--text);text-align:center;}
+#status.ok{color:var(--green);}#status.err{color:var(--enemy);}
+
+/* GAME */
+#gameWrap{display:none;flex-direction:column;align-items:center;position:relative;z-index:10;}
+#hud{display:flex;justify-content:space-between;align-items:center;width:760px;padding:6px 2px;}
+.hudp{display:flex;align-items:center;gap:8px;flex:1;}
+.hudp.right{justify-content:flex-end;}
+.plbl{font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;}
+.hpbar{width:80px;height:5px;background:#0d1c28;overflow:hidden;}
+.hpfill{height:100%;transition:width .08s;}
+.hp1{background:var(--p1);box-shadow:0 0 5px var(--p1);}
+.hp2{background:var(--p2);box-shadow:0 0 5px var(--p2);}
+.upgdots{display:flex;gap:3px;align-items:center;}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--dim);}
+.dot.on1{background:var(--p1);box-shadow:0 0 4px var(--p1);}
+.dot.on2{background:var(--p2);box-shadow:0 0 4px var(--p2);}
+#hudmid{text-align:center;flex:0 0 auto;padding:0 12px;}
+#waveinfo{font-family:'Orbitron',sans-serif;font-size:.68rem;font-weight:700;color:var(--core);letter-spacing:.15em;}
+#scoreinfo{font-size:.58rem;color:var(--dim);letter-spacing:.1em;margin-top:1px;}
+#corebar{width:100px;height:4px;background:#0d1c28;margin:4px auto 0;overflow:hidden;}
+#corefill{height:100%;background:var(--core);transition:width .08s;box-shadow:0 0 5px var(--core);}
+canvas{border:1px solid var(--border);display:block;cursor:crosshair;}
+#cwrap{position:relative;}
+.cover{display:none;position:absolute;inset:0;background:rgba(6,9,13,.78);
+  align-items:center;justify-content:center;flex-direction:column;gap:0;}
+.cover.on{display:flex;}
+.modal{background:var(--panel);border:1px solid var(--border);padding:28px 36px;text-align:center;}
+.mtitle{font-family:'Orbitron',sans-serif;font-size:1.05rem;font-weight:700;letter-spacing:.2em;margin-bottom:4px;}
+.msub{font-size:.65rem;color:var(--dim);letter-spacing:.1em;margin-bottom:18px;}
+.mact{display:flex;gap:10px;justify-content:center;}
+/* upgrade grid */
+#upgModal{max-width:720px;width:100%;}
+#upgGrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;}
+.ucard{background:var(--bg);border:1px solid var(--border);padding:14px 12px;cursor:pointer;
+  transition:border-color .15s,box-shadow .15s;text-align:left;}
+.ucard:hover{border-color:var(--core);box-shadow:0 0 12px #ffd70022;}
+.ucard.picked{border-color:var(--green);box-shadow:0 0 10px #39ff1422;pointer-events:none;}
+.ucard.locked{opacity:.32;pointer-events:none;}
+.utag{font-size:.55rem;letter-spacing:.2em;margin-bottom:5px;}
+.uname{font-family:'Orbitron',sans-serif;font-size:.72rem;font-weight:700;margin-bottom:5px;}
+.udesc{font-size:.62rem;color:var(--text);line-height:1.5;}
+.uicon{font-size:1.4rem;margin-bottom:6px;}
+#upgWait{font-size:.7rem;color:var(--dim);letter-spacing:.12em;margin-top:6px;}
+.ctrlbar{font-size:.6rem;color:var(--dim);letter-spacing:.08em;margin-top:5px;text-align:center;}
+.ctrlbar b{color:var(--text);}
+</style>
+</head>
+<body>
+
+<!-- LOBBY -->
+<div id="lobby">
+  <h1>OUTPOST</h1>
+  <div class="tagline">CO-OP WAVE SURVIVAL // TWO PLAYERS</div>
+  <div class="card">
+    <div class="clabel">// Host — Player 1</div>
+    <div class="hrow">
+      <button class="btn c1" id="hostBtn">Create Room</button>
+    </div>
+    <div id="roomDisplay" style="display:none">
+      <div class="coderow">
+        <div class="roomcode" id="roomCode"></div>
+        <button class="btn sm c1" id="copyBtn">COPY</button>
+      </div>
+      <div class="rhint" id="waitHint">Waiting for Player 2...</div>
+      <div id="startRow" style="display:none;margin-top:14px;">
+        <button class="btn c1" id="startBtn">▶ START GAME</button>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="clabel">// Join — Player 2</div>
+    <div class="jrow">
+      <input id="codeInput" maxlength="4" placeholder="XXXX" spellcheck="false" autocomplete="off">
+      <button class="btn c2" id="joinBtn">Join</button>
+    </div>
+  </div>
+  <div id="status"></div>
+</div>
+
+<!-- GAME -->
+<div id="gameWrap">
+  <div id="hud">
+    <div class="hudp">
+      <span class="plbl" style="color:var(--p1)">P1</span>
+      <div class="hpbar"><div class="hpfill hp1" id="hp1" style="width:100%"></div></div>
+      <div class="upgdots" id="upd1"></div>
+    </div>
+    <div id="hudmid">
+      <div id="waveinfo">WAVE 1</div>
+      <div id="scoreinfo">SCORE 0</div>
+      <div id="corebar"><div id="corefill" style="width:100%"></div></div>
+    </div>
+    <div class="hudp right">
+      <div class="upgdots" id="upd2"></div>
+      <div class="hpbar"><div class="hpfill hp2" id="hp2" style="width:100%"></div></div>
+      <span class="plbl" style="color:var(--p2)">P2</span>
+    </div>
+  </div>
+
+  <div id="cwrap">
+    <canvas id="canvas" width="760" height="500"></canvas>
+
+    <!-- Upgrade screen -->
+    <div class="cover" id="upgCover">
+      <div class="modal" id="upgModal">
+        <div class="mtitle cg" id="upgTitle" style="color:var(--core)">WAVE CLEAR — CHOOSE UPGRADES</div>
+        <div class="msub" id="upgSub"></div>
+        <div id="upgGrid"></div>
+        <div id="upgWait" style="display:none"></div>
+        <div class="mact" id="upgNext" style="display:none">
+          <button class="btn cg" id="nextWaveBtn">▶ NEXT WAVE</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Game over -->
+    <div class="cover" id="overCover">
+      <div class="modal">
+        <div class="mtitle cr" id="overTitle">OUTPOST LOST</div>
+        <div class="msub" id="overSub"></div>
+        <div class="mact">
+          <button class="btn cr" id="retryBtn" style="display:none">↺ RETRY</button>
+          <span id="retryWait" style="font-size:.7rem;color:var(--dim);display:none">Waiting for host...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ctrlbar"><b>Both players:</b> WASD to move · Mouse to aim · Click or Space to shoot</div>
+</div>
+
+<script>
+// ══════════════════════════════════════
+// NETWORK
+// ══════════════════════════════════════
+let peer,conn,myRole=null,connected=false;
+const $ = id => document.getElementById(id);
+
+function setStatus(m,t=''){$('status').textContent=m;$('status').className=t;}
+function genCode(){const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let s='';for(let i=0;i<4;i++)s+=c[Math.floor(Math.random()*c.length)];return s;}
+
+// HOST
+$('hostBtn').addEventListener('click',()=>{
+  $('hostBtn').disabled=true; myRole='host';
+  hostCreate(genCode());
+});
+
+function hostCreate(code){
+  if(peer){try{peer.destroy();}catch(e){}}
+  peer=new Peer('OP-'+code,{debug:0});
+  peer.on('open',()=>{
+    $('roomDisplay').style.display='block';
+    $('roomCode').textContent=code;
+    setStatus('Room ready — share the code');
+  });
+  peer.on('connection',c=>{
+    conn=c;
+    c.on('open',()=>{
+      connected=true;
+      $('waitHint').textContent='Player 2 connected ✓';
+      $('waitHint').style.color='var(--green)';
+      $('startRow').style.display='block';
+      setStatus('Player 2 ready!','ok');
+    });
+    c.on('data',onData);
+    c.on('close',()=>{connected=false;});
+  });
+  peer.on('error',e=>{
+    if(e.type==='unavailable-id'){
+      hostCreate(genCode()); // code taken, silently retry with new one
+    } else {
+      setStatus('Error: '+e.type,'err');
+      $('hostBtn').disabled=false;
+    }
+  });
+}
+
+$('copyBtn').addEventListener('click',()=>{
+  navigator.clipboard?.writeText($('roomCode').textContent).then(()=>{
+    $('copyBtn').textContent='COPIED!';setTimeout(()=>$('copyBtn').textContent='COPY',1400);
+  });
+});
+
+$('startBtn').addEventListener('click',()=>{
+  if(!connected)return;
+  send({type:'cmd',cmd:'start'});
+  startGame();
+});
+
+// GUEST — no serialization option = matches host default
+$('joinBtn').addEventListener('click',()=>{
+  const code=$('codeInput').value.toUpperCase().trim();
+  if(code.length!==4){setStatus('Enter a 4-character room code','err');return;}
+  myRole='guest'; $('joinBtn').disabled=true; $('codeInput').disabled=true;
+  if(peer){try{peer.destroy();}catch(e){}}
+  peer=new Peer({debug:0});
+  peer.on('open',()=>{
+    setStatus('Connecting...','');
+    conn=peer.connect('OP-'+code,{reliable:true});
+    conn.on('open',()=>{connected=true;setStatus('Connected — waiting for host','ok');});
+    conn.on('data',onData);
+    conn.on('close',()=>{connected=false;});
+    setTimeout(()=>{if(!connected)setStatus('No response — check the code','err');},8000);
+  });
+  peer.on('error',e=>{
+    setStatus('Could not connect: '+e.type,'err');
+    $('joinBtn').disabled=false;$('codeInput').disabled=false;
+  });
+});
+
+function send(d){if(conn&&connected)try{conn.send(d);}catch(e){}}
+
+// ══════════════════════════════════════
+// ENGINE
+// ══════════════════════════════════════
+const canvas=$('canvas'),ctx=canvas.getContext('2d');
+const W=760,H=500;
+
+// ── State ──
+let gameRunning=false,wave=1,score=0,coreHp=100,enemiesLeft=0,betweenWaves=false,frameId;
+
+const players={
+  p1:{x:200,y:250,hp:100,maxHp:100,angle:0,speed:3,fireRate:20,dmg:1,bulletCount:1,shield:0},
+  p2:{x:560,y:250,hp:100,maxHp:100,angle:Math.PI,speed:3,fireRate:20,dmg:1,bulletCount:1,shield:0}
+};
+// Upgrade tracking per player
+const upgrades={p1:[],p2:[]};
+
+let bullets=[],enemies=[],particles=[],pickups=[];
+const core={x:W/2,y:H/2,r:22};
+
+// ── Base upgrades (permanent) ──
+let baseUpgrades={
+  turret:{level:0,maxLevel:2},
+  wall:{level:0,maxLevel:2},
+  regen:{level:0,maxLevel:2},
+};
+let turretAngle=0,turretTimer=0;
+
+// ── Input ──
+const keys={};
+// Each player has their own mouse state — host tracks local mouse for P1
+// Guest sends raw canvas-relative mouse coords; host uses them for P2
+const mouseP1={x:W/2,y:H/2,down:false};
+let remoteMouseP2={x:W/2,y:H/2,down:false}; // received from guest
+
+window.addEventListener('keydown',e=>{
+  keys[e.key]=true;
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault();
+});
+window.addEventListener('keyup',e=>{keys[e.key]=false;});
+
+canvas.addEventListener('mousemove',e=>{
+  const r=canvas.getBoundingClientRect();
+  mouseP1.x=e.clientX-r.left; mouseP1.y=e.clientY-r.top;
+});
+canvas.addEventListener('mousedown',e=>{if(e.button===0)mouseP1.down=true;});
+canvas.addEventListener('mouseup',e=>{if(e.button===0)mouseP1.down=false;});
+
+// Host computes P1 input — WASD + local mouse
+function getP1Input(){
+  let dx=0,dy=0;
+  const spd=players.p1.speed;
+  if(keys['w']||keys['W'])dy-=spd; if(keys['s']||keys['S'])dy+=spd;
+  if(keys['a']||keys['A'])dx-=spd; if(keys['d']||keys['D'])dx+=spd;
+  // Angle: from P1 position toward local mouse
+  const angle=Math.atan2(mouseP1.y-players.p1.y, mouseP1.x-players.p1.x);
+  return{dx,dy,angle,shoot:mouseP1.down||keys[' ']||false};
+}
+
+// Guest computes P2 input — WASD + local mouse — sends RAW mouse coords + shoot
+function getP2Input(){
+  let dx=0,dy=0;
+  const spd=players.p2.speed;
+  if(keys['w']||keys['W'])dy-=spd; if(keys['s']||keys['S'])dy+=spd;
+  if(keys['a']||keys['A'])dx-=spd; if(keys['d']||keys['D'])dx+=spd;
+  return{dx,dy,mx:mouseP1.x,my:mouseP1.y,shoot:mouseP1.down||keys[' ']||false};
+  // NOTE: mouseP1 is the *local* mouse — on the guest machine this IS the P2 mouse
+}
+
+let remoteP2={dx:0,dy:0,mx:W/2,my:H/2,shoot:false};
+let guestInterval=null;
+function startGuestSending(){
+  if(guestInterval)return;
+  guestInterval=setInterval(()=>send({type:'input',input:getP2Input()}),16);
+}
+
+// ── Shoot timers ──
+let t1=0,t2=0;
+
+// ══════════════════════════════════════
+// UPGRADE DEFINITIONS
+// ══════════════════════════════════════
+// Each upgrade has a maxPicks — how many times total (across both players) it can be selected
+// player upgrades: 1 pick per player (enforced by showing it as locked if that player already has it)
+// base upgrades: capped by maxLevel
+const UPGRADES=[
+  {id:'speed',    target:'player', maxPicks:1, label:'OVERDRIVE',    icon:'⚡', color:'#00e5ff',
+   desc:'Move +25%  •  one time only',
+   apply:(p)=>{p.speed=Math.min(p.speed*1.25,5.5);}},
+  {id:'firerate', target:'player', maxPicks:1, label:'RAPID FIRE',   icon:'🔥', color:'#ff6b35',
+   desc:'Fire rate +35%  •  one time only',
+   apply:(p)=>{p.fireRate=Math.max(p.fireRate*0.68,10);}},
+  {id:'damage',   target:'player', maxPicks:1, label:'HEAVY ROUNDS', icon:'💥', color:'#ff2244',
+   desc:'Bullet damage ×1.5  •  one time only',
+   apply:(p)=>{p.dmg=parseFloat((p.dmg*1.5).toFixed(2));}},
+  {id:'spread',   target:'player', maxPicks:1, label:'SPREAD SHOT',  icon:'🔱', color:'#a855f7',
+   desc:'+2 extra bullets per shot  •  one time only',
+   apply:(p)=>{p.bulletCount=Math.min(p.bulletCount+2,3);}},
+  {id:'maxhp',    target:'player', maxPicks:1, label:'FORTIFY',      icon:'❤️', color:'#39ff14',
+   desc:'Max HP +50, heal 30  •  one time only',
+   apply:(p)=>{p.maxHp+=50;p.hp=Math.min(p.hp+30,p.maxHp);}},
+  {id:'shield',   target:'player', maxPicks:1, label:'ENERGY SHIELD',icon:'🛡', color:'#88aaff',
+   desc:'Absorb next hit  •  one time only',
+   apply:(p)=>{p.shield=Math.min(p.shield+1,1);}},
+  {id:'turret',   target:'base',   maxPicks:2, label:'AUTO TURRET',  icon:'🔫', color:'#ffd700',
+   desc:'Core shoots nearest enemy (upgradeable x2)',
+   apply:()=>{baseUpgrades.turret.level=Math.min(baseUpgrades.turret.level+1,2);}},
+  {id:'wall',     target:'base',   maxPicks:2, label:'SHIELD WALL',  icon:'🛡️', color:'#ffd700',
+   desc:'Core takes 30% less damage per level (x2)',
+   apply:()=>{baseUpgrades.wall.level=Math.min(baseUpgrades.wall.level+1,2);}},
+  {id:'regen',    target:'base',   maxPicks:2, label:'REGEN FIELD',  icon:'💚', color:'#ffd700',
+   desc:'Core heals 10 HP between waves (x2)',
+   apply:()=>{baseUpgrades.regen.level=Math.min(baseUpgrades.regen.level+1,2);}},
+];
+
+// Upgrade state during pick phase
+let upgPicks={p1:null,p2:null}; // chosen upgrade id per player
+let upgChoices=[]; // current 3 offered upgrades
+
+function rollUpgrades(){
+  // Filter out upgrades that are fully exhausted
+  const available=UPGRADES.filter(u=>{
+    if(u.target==='base'){
+      // Base: check against maxPicks (level)
+      if(u.id==='turret') return baseUpgrades.turret.level < u.maxPicks;
+      if(u.id==='wall')   return baseUpgrades.wall.level   < u.maxPicks;
+      if(u.id==='regen')  return baseUpgrades.regen.level  < u.maxPicks;
+    } else {
+      // Player: only show if neither player already has it (maxPicks:1 means once per player)
+      const p1has=upgrades.p1.includes(u.id);
+      const p2has=upgrades.p2.includes(u.id);
+      return !p1has || !p2has; // still show if at least one player can take it
+    }
+    return true;
+  });
+  const shuffled=[...available].sort(()=>Math.random()-0.5);
+  return shuffled.slice(0,Math.min(3,shuffled.length));
+}
+
+// ══════════════════════════════════════
+// MESSAGES
+// ══════════════════════════════════════
+function onData(d){
+  if(d.type==='cmd'){
+    if(d.cmd==='start') startGame();
+    if(d.cmd==='retry') startGame();
+    if(d.cmd==='nextWave'){
+      // Guest receives nextWave command — apply upgrades then start wave
+      applyUpgradePick('p1',d.up1);
+      applyUpgradePick('p2',d.up2);
+      baseUpgrades=d.base;
+      betweenWaves=false;
+      wave=d.wave;
+      hideModal('upgCover');
+      hideModal('overCover');
+    }
+  }
+  if(d.type==='input') remoteP2=d.input;
+  if(d.type==='upgPick'&&myRole==='host'){
+    // Guest picked an upgrade
+    upgPicks.p2=d.id;
+    renderUpgrades(); // refresh so host can see
+    checkBothPicked();
+  }
+  if(d.type==='state'&&myRole==='guest') applyState(d.s);
+}
+
+// ══════════════════════════════════════
+// GAME LOOP
+// ══════════════════════════════════════
+let lastT=0;
+function loop(ts){
+  const dt=Math.min((ts-lastT)/16.67,3); lastT=ts;
+  if(myRole==='host'&&gameRunning){
+    update(dt);
+    send({type:'state',s:buildState()});
+  }
+  draw();
+  frameId=requestAnimationFrame(loop);
+}
+
+// ══════════════════════════════════════
+// STATE BUILD / APPLY
+// ══════════════════════════════════════
+function buildState(){
+  return{
+    p1:{x:players.p1.x,y:players.p1.y,hp:players.p1.hp,maxHp:players.p1.maxHp,angle:players.p1.angle,shield:players.p1.shield},
+    p2:{x:players.p2.x,y:players.p2.y,hp:players.p2.hp,maxHp:players.p2.maxHp,angle:players.p2.angle,shield:players.p2.shield},
+    bullets:bullets.map(b=>({x:b.x,y:b.y,color:b.color})),
+    enemies:enemies.map(e=>({x:e.x,y:e.y,hp:e.hp,maxHp:e.maxHp,r:e.r,type:e.type,angle:e.angle})),
+    particles:particles.map(p=>({x:p.x,y:p.y,color:p.color,life:p.life})),
+    pickups:pickups.map(p=>({x:p.x,y:p.y,type:p.type})),
+    upgP1:upgrades.p1.slice(),upgP2:upgrades.p2.slice(),
+    coreHp,wave,score,betweenWaves,over:!gameRunning
+  };
+}
+function applyState(s){
+  const p1=players.p1,p2=players.p2;
+  p1.x=s.p1.x;p1.y=s.p1.y;p1.hp=s.p1.hp;p1.maxHp=s.p1.maxHp;p1.angle=s.p1.angle;p1.shield=s.p1.shield;
+  p2.x=s.p2.x;p2.y=s.p2.y;p2.hp=s.p2.hp;p2.maxHp=s.p2.maxHp;p2.angle=s.p2.angle;p2.shield=s.p2.shield;
+  bullets=s.bullets;enemies=s.enemies;particles=s.particles;pickups=s.pickups||[];
+  upgrades.p1=s.upgP1||[];upgrades.p2=s.upgP2||[];
+  coreHp=s.coreHp;wave=s.wave;score=s.score;
+  if(s.betweenWaves&&!betweenWaves){betweenWaves=true;showUpgradeScreen(false);}
+  else if(!s.betweenWaves&&betweenWaves){betweenWaves=false;hideModal('upgCover');}
+  if(s.over&&gameRunning){gameRunning=false;showGameOver(false);}
+  updateHUD();
+}
+
+// ══════════════════════════════════════
+// UPDATE
+// ══════════════════════════════════════
+function update(dt){
+  const p1i=getP1Input();
+  // For P2: dx/dy from remote, but angle computed HERE on host using remote mouse coords
+  const p2raw=remoteP2;
+  const p2Angle=Math.atan2(p2raw.my-players.p2.y, p2raw.mx-players.p2.x);
+  const p2i={dx:p2raw.dx,dy:p2raw.dy,angle:p2Angle,shoot:p2raw.shoot||false};
+
+  move(players.p1,p1i,dt); move(players.p2,p2i,dt);
+  players.p1.angle=p1i.angle; players.p2.angle=p2i.angle;
+
+  // Shoot
+  t1=Math.max(0,t1-dt); t2=Math.max(0,t2-dt);
+  if(p1i.shoot&&t1<=0){fireSpread('p1',players.p1.x,players.p1.y,p1i.angle,players.p1);t1=players.p1.fireRate;}
+  if(p2i.shoot&&t2<=0){fireSpread('p2',players.p2.x,players.p2.y,p2i.angle,players.p2);t2=players.p2.fireRate;}
+
+  // Auto-turret
+  if(baseUpgrades.turret.level>0){
+    turretTimer=Math.max(0,turretTimer-dt);
+    if(turretTimer<=0&&enemies.length>0){
+      // Find nearest enemy to core
+      let nearest=null,nd=Infinity;
+      for(const e of enemies){const d=Math.hypot(e.x-core.x,e.y-core.y);if(d<nd){nd=d;nearest=e;}}
+      if(nearest){
+        turretAngle=Math.atan2(nearest.y-core.y,nearest.x-core.x);
+        const shots=baseUpgrades.turret.level;
+        for(let i=0;i<shots;i++){
+          const a=turretAngle+(i-(shots-1)/2)*0.15;
+          bullets.push({x:core.x,y:core.y,vx:Math.cos(a)*9,vy:Math.sin(a)*9,life:90,color:'#ffd700',dmg:2});
+        }
+        turretTimer=Math.max(1.2,2.2-baseUpgrades.turret.level*0.4);
+      }
+    }
+  }
+
+  // Bullets
+  for(let i=bullets.length-1;i>=0;i--){
+    const b=bullets[i];
+    b.x+=b.vx*dt;b.y+=b.vy*dt;b.life-=dt;
+    if(b.life<=0||b.x<-20||b.x>W+20||b.y<-20||b.y>H+20){bullets.splice(i,1);continue;}
+    let hit=false;
+    for(let j=enemies.length-1;j>=0;j--){
+      const e=enemies[j];
+      if((b.x-e.x)**2+(b.y-e.y)**2<(e.r+3)**2){
+        const dmg=b.dmg||1;
+        e.hp-=dmg;
+        sparks(b.x,b.y,b.color,4);
+        bullets.splice(i,1);hit=true;
+        if(e.hp<=0){
+          sparks(e.x,e.y,'#ff2244',14);maybePickup(e.x,e.y);
+          score+=e.type==='tank'?25:e.type==='fast'?15:10;
+          enemies.splice(j,1);enemiesLeft--;
+        }
+        break;
+      }
+    }
+  }
+
+  // Enemies
+  for(let i=enemies.length-1;i>=0;i--){
+    const e=enemies[i];
+    let best={x:core.x,y:core.y},bd=Infinity;
+    for(const t of[{x:core.x,y:core.y},{x:players.p1.x,y:players.p1.y},{x:players.p2.x,y:players.p2.y}]){
+      const d=Math.hypot(t.x-e.x,t.y-e.y);if(d<bd){bd=d;best=t;}
+    }
+    const ang=Math.atan2(best.y-e.y,best.x-e.x);
+    e.angle=ang;e.x+=Math.cos(ang)*e.speed*dt;e.y+=Math.sin(ang)*e.speed*dt;
+    if(Math.hypot(e.x-core.x,e.y-core.y)<core.r+e.r){
+      const dmgMult=Math.max(0.1,1-baseUpgrades.wall.level*0.35);
+      coreHp=Math.max(0,coreHp-(e.type==='tank'?2:1)*dt*0.5*dmgMult);
+      sparks(core.x,core.y,'#ffd700',2);
+      if(coreHp<=0){endGame();return;}
+    }
+    for(const pv of[players.p1,players.p2]){
+      if(Math.hypot(e.x-pv.x,e.y-pv.y)<e.r+12){
+        if(pv.shield>0){pv.shield--;sparks(pv.x,pv.y,'#00e5ff',8);}
+        else pv.hp=Math.max(0,pv.hp-0.45*dt);
+      }
+    }
+  }
+
+  // Particles
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];p.x+=p.vx*dt;p.y+=p.vy*dt;p.vx*=0.91;p.vy*=0.91;p.life-=dt;
+    if(p.life<=0)particles.splice(i,1);
+  }
+
+  // Pickups
+  for(let i=pickups.length-1;i>=0;i--){
+    const pk=pickups[i];pk.life-=dt;
+    if(pk.life<=0){pickups.splice(i,1);continue;}
+    for(const pv of[players.p1,players.p2]){
+      if(Math.hypot(pk.x-pv.x,pk.y-pv.y)<20){
+        if(pk.type==='hp')pv.hp=Math.min(pv.maxHp,pv.hp+30);
+        else coreHp=Math.min(100,coreHp+20);
+        sparks(pk.x,pk.y,'#39ff14',10);pickups.splice(i,1);break;
+      }
+    }
+  }
+
+  // Wave clear
+  if(!betweenWaves&&enemies.length===0&&enemiesLeft===0){
+    betweenWaves=true;
+    // Regen base if unlocked
+    if(baseUpgrades.regen.level>0) coreHp=Math.min(100,coreHp+15*baseUpgrades.regen.level);
+    showUpgradeScreen(true);
+  }
+  updateHUD();
+}
+
+function move(p,inp,dt){
+  let nx=p.x+inp.dx*dt,ny=p.y+inp.dy*dt;
+  nx=Math.max(12,Math.min(W-12,nx));ny=Math.max(12,Math.min(H-12,ny));
+  const dx=nx-core.x,dy=ny-core.y,d=Math.hypot(dx,dy);
+  if(d<core.r+14){const k=(core.r+14)/d;nx=core.x+dx*k;ny=core.y+dy*k;}
+  p.x=nx;p.y=ny;
+}
+
+function fireSpread(owner,x,y,angle,p){
+  const n=p.bulletCount,spread=0.18;
+  for(let i=0;i<n;i++){
+    const a=angle+(i-(n-1)/2)*spread;
+    bullets.push({x,y,vx:Math.cos(a)*8.5,vy:Math.sin(a)*8.5,life:85,
+      color:owner==='p1'?'#00e5ff':'#ff6b35',dmg:p.dmg});
+  }
+}
+function sparks(x,y,color,n=8){
+  for(let i=0;i<n;i++){
+    const a=Math.random()*Math.PI*2,s=1.2+Math.random()*3.5;
+    particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:16+Math.random()*18,color});
+  }
+}
+function maybePickup(x,y){
+  if(Math.random()<0.18)pickups.push({x,y,type:Math.random()<0.65?'hp':'core',life:260});
+}
+function spawnWave(n){
+  betweenWaves=false;enemiesLeft=0;
+  const count=5+n*3;enemiesLeft=count;
+  const types=n>=3?['grunt','fast','tank']:n>=2?['grunt','fast']:['grunt'];
+  const sp={grunt:{hp:3,speed:1.1,r:10},fast:{hp:2,speed:2.2,r:7},tank:{hp:8+n,speed:0.55,r:16}};
+  for(let i=0;i<count;i++){
+    setTimeout(()=>{
+      if(!gameRunning)return;
+      const side=Math.floor(Math.random()*4);
+      let ex,ey;
+      if(side===0){ex=Math.random()*W;ey=-20;}
+      else if(side===1){ex=W+20;ey=Math.random()*H;}
+      else if(side===2){ex=Math.random()*W;ey=H+20;}
+      else{ex=-20;ey=Math.random()*H;}
+      const t=types[Math.floor(Math.random()*types.length)],s=sp[t];
+      // Scale hp with wave
+      enemies.push({x:ex,y:ey,hp:Math.ceil(s.hp*(1+n*0.15)),maxHp:Math.ceil(s.hp*(1+n*0.15)),
+        speed:s.speed*(1+n*0.04),r:s.r,type:t,angle:0});
+    },i*Math.max(60,560-n*20));
+  }
+}
+
+// ══════════════════════════════════════
+// UPGRADE UI
+// ══════════════════════════════════════
+function showUpgradeScreen(isHost){
+  upgPicks={p1:null,p2:null};
+  upgChoices=rollUpgrades();
+  renderUpgrades(isHost);
+  $('upgCover').classList.add('on');
+}
+
+function renderUpgrades(isHost){
+  const myKey=myRole==='host'?'p1':'p2';
+  const otherKey=myKey==='p1'?'p2':'p1';
+  // canPick: host always can (it's their turn), guest always can
+  const canPick=true;
+
+  $('upgTitle').textContent='WAVE '+wave+' CLEAR — PICK YOUR UPGRADE';
+  $('upgSub').textContent='Score: '+score+'  ·  Wave '+(wave+1)+' incoming';
+
+  const grid=$('upgGrid');
+  grid.innerHTML='';
+  upgChoices.forEach(u=>{
+    const div=document.createElement('div');
+    div.className='ucard';
+
+    const pickedByMe=upgPicks[myKey]===u.id;
+    const pickedByOther=upgPicks[otherKey]===u.id;
+    const iAlreadyHaveIt=u.target==='player'&&upgrades[myKey].includes(u.id);
+    const alreadyPicked=!!upgPicks[myKey];
+
+    if(pickedByMe) div.classList.add('picked');
+    // Lock card if: I already own this upgrade, OR I already made a pick this wave
+    const locked=iAlreadyHaveIt||(alreadyPicked&&!pickedByMe);
+    if(locked) div.classList.add('locked');
+
+    const tagColor=u.target==='base'?'var(--core)':u.color;
+    let statusLine='';
+    if(iAlreadyHaveIt) statusLine='<div style="font-size:.58rem;color:var(--dim);margin-top:6px;letter-spacing:.1em">Already owned</div>';
+    else if(pickedByMe) statusLine='<div style="font-size:.58rem;color:var(--green);margin-top:6px;letter-spacing:.1em">✓ YOUR PICK</div>';
+    else if(pickedByOther) statusLine='<div style="font-size:.58rem;color:var(--p'+(myKey==='p1'?'2':'1')+');margin-top:6px;letter-spacing:.1em">'+(myKey==='p1'?'P2':'P1')+' picked this</div>';
+
+    div.innerHTML=
+      '<div class="utag" style="color:'+tagColor+'">'+(u.target==='base'?'// BASE':'// PLAYER')+'</div>'+
+      '<div class="uicon">'+u.icon+'</div>'+
+      '<div class="uname" style="color:'+u.color+'">'+u.label+'</div>'+
+      '<div class="udesc">'+u.desc+'</div>'+
+      statusLine;
+
+    if(!locked&&!pickedByMe&&!alreadyPicked){
+      div.addEventListener('click',()=>pickUpgrade(u.id));
+    }
+    grid.appendChild(div);
+  });
+
+  // Wait/next status
+  if(myRole==='host'){
+    const bothDone=upgPicks.p1!==null&&upgPicks.p2!==null;
+    $('upgNext').style.display=bothDone?'flex':'none';
+    $('upgWait').style.display=bothDone?'none':'block';
+    if(!upgPicks.p1&&!upgPicks.p2) $('upgWait').textContent='Both players choose an upgrade...';
+    else if(!upgPicks.p1) $('upgWait').textContent='Waiting for you to pick...';
+    else $('upgWait').textContent='Waiting for Player 2...';
+  }else{
+    $('upgNext').style.display='none';
+    $('upgWait').style.display='block';
+    $('upgWait').textContent=upgPicks.p2?'Waiting for host...':'Pick your upgrade above';
+  }
+}
+
+function pickUpgrade(id){
+  const myKey=myRole==='host'?'p1':'p2';
+  upgPicks[myKey]=id;
+  if(myRole==='guest') send({type:'upgPick',id});
+  if(myRole==='host'){renderUpgrades(true);checkBothPicked();}
+  else renderUpgrades(false);
+}
+
+function checkBothPicked(){
+  if(myRole!=='host')return;
+  if(upgPicks.p1&&upgPicks.p2){
+    renderUpgrades(true); // show Next Wave button
+  }
+}
+
+$('nextWaveBtn').addEventListener('click',()=>{
+  if(myRole!=='host')return;
+  // Apply upgrades locally
+  applyUpgradePick('p1',upgPicks.p1);
+  applyUpgradePick('p2',upgPicks.p2);
+  wave++;betweenWaves=false;
+  hideModal('upgCover');
+  spawnWave(wave);
+  send({type:'cmd',cmd:'nextWave',wave,up1:upgPicks.p1,up2:upgPicks.p2,base:baseUpgrades});
+  upgPicks={p1:null,p2:null};
+});
+
+function applyUpgradePick(playerKey,upgradeId){
+  if(!upgradeId)return;
+  const u=UPGRADES.find(x=>x.id===upgradeId);
+  if(!u)return;
+  if(u.target==='player'){
+    u.apply(players[playerKey]);
+    upgrades[playerKey].push(upgradeId);
+  }else{
+    u.apply();
+  }
+}
+
+// ══════════════════════════════════════
+// HUD
+// ══════════════════════════════════════
+function updateHUD(){
+  $('hp1').style.width=(players.p1.hp/players.p1.maxHp*100)+'%';
+  $('hp2').style.width=(players.p2.hp/players.p2.maxHp*100)+'%';
+  $('corefill').style.width=coreHp+'%';
+  $('waveinfo').textContent='WAVE '+wave;
+  $('scoreinfo').textContent='SCORE '+score;
+  // Upgrade dots
+  renderDots('upd1','p1');
+  renderDots('upd2','p2');
+}
+function renderDots(elId,pk){
+  const el=$(elId);
+  el.innerHTML='';
+  for(let i=0;i<upgrades[pk].length&&i<6;i++){
+    const d=document.createElement('div');
+    d.className='dot '+(pk==='p1'?'on1':'on2');
+    el.appendChild(d);
+  }
+}
+
+function hideModal(id){$(id).classList.remove('on');}
+
+function showGameOver(isHost){
+  hideModal('upgCover');
+  $('overTitle').textContent='OUTPOST LOST';
+  $('overSub').textContent='Wave '+wave+'  ·  Score '+score;
+  $('retryBtn').style.display=isHost?'inline-block':'none';
+  $('retryWait').style.display=isHost?'none':'block';
+  $('overCover').classList.add('on');
+}
+
+$('retryBtn').addEventListener('click',()=>{
+  if(myRole!=='host')return;
+  send({type:'cmd',cmd:'retry'});
+  startGame();
+});
+
+function endGame(){gameRunning=false;showGameOver(true);}
+
+// ══════════════════════════════════════
+// START
+// ══════════════════════════════════════
+function resetPlayer(p,x,y,angle){
+  p.x=x;p.y=y;p.hp=100;p.maxHp=100;p.angle=angle;
+  p.speed=3;p.fireRate=20;p.dmg=1;p.bulletCount=1;p.shield=0;
+}
+function startGame(){
+  $('lobby').style.display='none';
+  $('gameWrap').style.display='flex';
+  hideModal('upgCover');hideModal('overCover');
+  gameRunning=true;wave=1;score=0;coreHp=100;enemiesLeft=0;betweenWaves=false;
+  t1=0;t2=0;turretTimer=0;turretAngle=0;
+  resetPlayer(players.p1,200,250,0);
+  resetPlayer(players.p2,560,250,Math.PI);
+  upgrades.p1=[];upgrades.p2=[];
+  baseUpgrades={
+    turret:{level:0,maxLevel:3},
+    wall:{level:0,maxLevel:2},
+    regen:{level:0,maxLevel:2},
+  };
+  bullets=[];enemies=[];particles=[];pickups=[];
+  upgPicks={p1:null,p2:null};
+  if(myRole==='host')spawnWave(1);
+  if(myRole==='guest')startGuestSending();
+  if(frameId)cancelAnimationFrame(frameId);
+  lastT=performance.now();
+  frameId=requestAnimationFrame(loop);
+  updateHUD();
+}
+
+// ══════════════════════════════════════
+// DRAW
+// ══════════════════════════════════════
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#060a0d';ctx.fillRect(0,0,W,H);
+  // Grid
+  ctx.strokeStyle='#0c1820';ctx.lineWidth=1;
+  for(let x=0;x<W;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=0;y<H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+
+  drawCore();
+  for(const pk of pickups)drawPickup(pk);
+  // Particles
+  for(const p of particles){
+    ctx.globalAlpha=Math.max(0,p.life/34);
+    ctx.fillStyle=p.color;
+    ctx.beginPath();ctx.arc(p.x,p.y,2.2,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+  for(const e of enemies)drawEnemy(e);
+  for(const b of bullets){
+    ctx.save();ctx.shadowColor=b.color;ctx.shadowBlur=9;ctx.fillStyle=b.color;
+    ctx.beginPath();ctx.arc(b.x,b.y,3,0,Math.PI*2);ctx.fill();ctx.restore();
+  }
+  drawShip(players.p1,'p1');
+  drawShip(players.p2,'p2');
+}
+
+function drawCore(){
+  const p=0.5+0.5*Math.sin(Date.now()*.002);
+  ctx.save();
+  // Shield wall rings
+  if(baseUpgrades.wall.level>0){
+    ctx.strokeStyle=`rgba(0,229,255,${0.08*baseUpgrades.wall.level})`;
+    ctx.lineWidth=8*baseUpgrades.wall.level;
+    ctx.beginPath();ctx.arc(core.x,core.y,core.r+14,0,Math.PI*2);ctx.stroke();
+  }
+  // Turret barrel
+  if(baseUpgrades.turret.level>0&&enemies.length>0){
+    ctx.save();ctx.translate(core.x,core.y);ctx.rotate(turretAngle);
+    ctx.fillStyle=`rgba(255,215,0,0.7)`;
+    ctx.fillRect(core.r+2,-2,12,4);
+    ctx.restore();
+  }
+  ctx.shadowColor='#ffd700';ctx.shadowBlur=18+p*10;
+  ctx.strokeStyle=`rgba(255,215,0,${0.38+p*0.35})`;ctx.lineWidth=2;
+  ctx.beginPath();ctx.arc(core.x,core.y,core.r+8,0,Math.PI*2);ctx.stroke();
+  ctx.fillStyle=`rgba(255,215,0,${0.1+p*0.08})`;
+  ctx.beginPath();ctx.arc(core.x,core.y,core.r,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle=`rgba(255,215,0,${0.65+p*0.3})`;
+  ctx.font='bold 13px Orbitron';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText('⬡',core.x,core.y);
+  ctx.restore();
+}
+
+function drawShip(pl,id){
+  const color=id==='p1'?'#00e5ff':'#ff6b35';
+  const isMe=(myRole==='host'&&id==='p1')||(myRole==='guest'&&id==='p2');
+  ctx.save();ctx.translate(pl.x,pl.y);ctx.rotate(pl.angle);
+  ctx.shadowColor=color;ctx.shadowBlur=14;ctx.globalAlpha=pl.hp<=0?0.12:0.9;
+  ctx.fillStyle=color;
+  ctx.beginPath();ctx.moveTo(13,0);ctx.lineTo(-9,-8);ctx.lineTo(-5,0);ctx.lineTo(-9,8);ctx.closePath();ctx.fill();
+  ctx.fillRect(7,-1.5,11,3);
+  if(isMe){ctx.globalAlpha=0.28;ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(0,0,19,0,Math.PI*2);ctx.stroke();}
+  ctx.restore();ctx.globalAlpha=1;
+  // Shield bubble
+  if(pl.shield>0){
+    ctx.save();ctx.strokeStyle='#00e5ff';ctx.globalAlpha=0.45;ctx.lineWidth=2;
+    ctx.shadowColor='#00e5ff';ctx.shadowBlur=8;
+    ctx.beginPath();ctx.arc(pl.x,pl.y,20,0,Math.PI*2);ctx.stroke();
+    ctx.restore();
+  }
+  // HP bar
+  if(pl.hp<pl.maxHp&&pl.hp>0){
+    const bw=32,by=pl.y-23;
+    ctx.fillStyle='#0d1c28';ctx.fillRect(pl.x-bw/2,by,bw,4);
+    ctx.fillStyle=color;ctx.fillRect(pl.x-bw/2,by,bw*(pl.hp/pl.maxHp),4);
+  }
+}
+
+function drawEnemy(e){
+  const pct=e.hp/e.maxHp;
+  ctx.save();ctx.translate(e.x,e.y);ctx.rotate(e.angle);
+  ctx.shadowColor='#ff2244';ctx.shadowBlur=8;
+  if(e.type==='grunt'){
+    ctx.fillStyle=`rgba(255,${Math.floor(35+pct*25)},20,0.9)`;
+    ctx.beginPath();ctx.moveTo(e.r,0);
+    for(let i=0;i<5;i++){const a=(i/5)*Math.PI*2-Math.PI/2,r=i%2===0?e.r:e.r*.5;ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r);}
+    ctx.closePath();ctx.fill();
+  }else if(e.type==='fast'){
+    ctx.fillStyle='rgba(255,85,0,0.92)';
+    ctx.beginPath();ctx.moveTo(e.r,0);ctx.lineTo(-e.r,-e.r*.6);ctx.lineTo(-e.r*.4,0);ctx.lineTo(-e.r,e.r*.6);ctx.closePath();ctx.fill();
+  }else{
+    ctx.fillStyle=`rgba(190,0,28,${0.58+pct*.35})`;
+    ctx.beginPath();for(let i=0;i<6;i++){const a=(i/6)*Math.PI*2;ctx[i===0?'moveTo':'lineTo'](Math.cos(a)*e.r,Math.sin(a)*e.r);}
+    ctx.closePath();ctx.fill();ctx.strokeStyle='#ff2244';ctx.lineWidth=2;ctx.stroke();
+  }
+  ctx.restore();
+  if(e.maxHp>1){
+    const bw=e.r*2,by=e.y-e.r-7;
+    ctx.fillStyle='#180006';ctx.fillRect(e.x-bw/2,by,bw,3);
+    ctx.fillStyle='#ff2244';ctx.fillRect(e.x-bw/2,by,bw*pct,3);
+  }
+}
+
+function drawPickup(pk){
+  const p=.5+.5*Math.sin(Date.now()*.005+pk.x);
+  ctx.save();ctx.globalAlpha=.55+p*.45;
+  ctx.shadowColor=pk.type==='hp'?'#39ff14':'#ffd700';ctx.shadowBlur=12;
+  ctx.fillStyle=pk.type==='hp'?'#39ff14':'#ffd700';
+  ctx.font='15px monospace';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(pk.type==='hp'?'+':'◈',pk.x,pk.y);ctx.restore();
+}
+</script>
+</body>
+</html>
