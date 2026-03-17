@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>OUTPOST // CO-OP</title>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
 <style>
 :root{
   --bg:#06090d;--panel:#0b1118;--border:#172030;
@@ -199,10 +199,15 @@ $('hostBtn').addEventListener('click',()=>{
   hostCreate(genCode());
 });
 
+const PEER_CFG={debug:0,config:{iceServers:[
+  {urls:'stun:stun.l.google.com:19302'},
+  {urls:'stun:stun1.l.google.com:19302'}
+]}};
+
 function hostCreate(code){
   if(peer){try{peer.destroy();}catch(e){}}
-  peer=new Peer('OP-'+code,{debug:0});
-  peer.on('open',()=>{
+  peer=new Peer('OP-'+code, PEER_CFG);
+  peer.on('open',id=>{
     $('roomDisplay').style.display='block';
     $('roomCode').textContent=code;
     setStatus('Room ready — share the code');
@@ -221,7 +226,7 @@ function hostCreate(code){
   });
   peer.on('error',e=>{
     if(e.type==='unavailable-id'){
-      hostCreate(genCode()); // code taken, silently retry with new one
+      hostCreate(genCode());
     } else {
       setStatus('Error: '+e.type,'err');
       $('hostBtn').disabled=false;
@@ -241,24 +246,29 @@ $('startBtn').addEventListener('click',()=>{
   startGame();
 });
 
-// GUEST — no serialization option = matches host default
+// GUEST
 $('joinBtn').addEventListener('click',()=>{
   const code=$('codeInput').value.toUpperCase().trim();
   if(code.length!==4){setStatus('Enter a 4-character room code','err');return;}
   myRole='guest'; $('joinBtn').disabled=true; $('codeInput').disabled=true;
   if(peer){try{peer.destroy();}catch(e){}}
-  peer=new Peer({debug:0});
+  peer=new Peer(PEER_CFG);
   peer.on('open',()=>{
     setStatus('Connecting...','');
     conn=peer.connect('OP-'+code,{reliable:true});
-    conn.on('open',()=>{connected=true;setStatus('Connected — waiting for host','ok');});
+    conn.on('open',()=>{
+      connected=true;
+      setStatus('Connected — waiting for host','ok');
+    });
     conn.on('data',onData);
     conn.on('close',()=>{connected=false;});
-    setTimeout(()=>{if(!connected)setStatus('No response — check the code','err');},8000);
+    setTimeout(()=>{
+      if(!connected) setStatus('No response — check the code and try again','err');
+    },10000);
   });
   peer.on('error',e=>{
-    setStatus('Could not connect: '+e.type,'err');
-    $('joinBtn').disabled=false;$('codeInput').disabled=false;
+    setStatus('Error: '+e.type+' — check the code','err');
+    $('joinBtn').disabled=false; $('codeInput').disabled=false;
   });
 });
 
