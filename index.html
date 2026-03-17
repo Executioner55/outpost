@@ -56,7 +56,7 @@ body::before{content:'';position:fixed;inset:0;
 
 /* GAME */
 #gameWrap{display:none;flex-direction:column;align-items:center;position:relative;z-index:10;}
-#hud{display:flex;justify-content:space-between;align-items:center;width:760px;padding:6px 2px;}
+#hud{display:flex;justify-content:space-between;align-items:center;width:900px;padding:6px 2px;}
 .hudp{display:flex;align-items:center;gap:8px;flex:1;}
 .hudp.right{justify-content:flex-end;}
 .plbl{font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;}
@@ -152,7 +152,7 @@ canvas{border:1px solid var(--border);display:block;cursor:crosshair;}
   </div>
 
   <div id="cwrap">
-    <canvas id="canvas" width="760" height="500"></canvas>
+    <canvas id="canvas" width="900" height="620"></canvas>
 
     <!-- Upgrade screen -->
     <div class="cover" id="upgCover">
@@ -278,14 +278,14 @@ function send(d){if(conn&&connected)try{conn.send(d);}catch(e){}}
 // ENGINE
 // ══════════════════════════════════════
 const canvas=$('canvas'),ctx=canvas.getContext('2d');
-const W=760,H=500;
+const W=900,H=620;
 
 // ── State ──
 let gameRunning=false,wave=1,score=0,coreHp=100,enemiesLeft=0,betweenWaves=false,frameId;
 
 const players={
-  p1:{x:200,y:250,hp:100,maxHp:100,angle:0,speed:3,fireRate:20,dmg:1,bulletCount:1,shield:0},
-  p2:{x:560,y:250,hp:100,maxHp:100,angle:Math.PI,speed:3,fireRate:20,dmg:1,bulletCount:1,shield:0}
+  p1:{x:220,y:310,hp:100,maxHp:100,angle:0,speed:3,fireRate:20,dmg:1,bulletCount:1,shield:0},
+  p2:{x:680,y:310,hp:100,maxHp:100,angle:Math.PI,speed:3,fireRate:20,dmg:1,bulletCount:1,shield:0}
 };
 // Upgrade tracking per player
 const upgrades={p1:[],p2:[]};
@@ -298,8 +298,10 @@ let baseUpgrades={
   turret:{level:0,maxLevel:2},
   wall:{level:0,maxLevel:2},
   regen:{level:0,maxLevel:2},
+  nova:false,
+  magnet:false,
 };
-let turretAngle=0,turretTimer=0;
+let turretAngle=0,turretTimer=0,novaTimer=0;
 
 // ── Input ──
 const keys={};
@@ -329,7 +331,7 @@ function getP1Input(){
   if(keys['a']||keys['A'])dx-=spd; if(keys['d']||keys['D'])dx+=spd;
   // Angle: from P1 position toward local mouse
   const angle=Math.atan2(mouseP1.y-players.p1.y, mouseP1.x-players.p1.x);
-  return{dx,dy,angle,shoot:mouseP1.down||keys[' ']||false};
+  return{dx,dy,angle,shoot:mouseP1.down||keys[' ']||false,dash:keys['Shift']||false};
 }
 
 // Guest computes P2 input — WASD + local mouse — sends RAW mouse coords + shoot
@@ -338,7 +340,7 @@ function getP2Input(){
   const spd=players.p2.speed;
   if(keys['w']||keys['W'])dy-=spd; if(keys['s']||keys['S'])dy+=spd;
   if(keys['a']||keys['A'])dx-=spd; if(keys['d']||keys['D'])dx+=spd;
-  return{dx,dy,mx:mouseP1.x,my:mouseP1.y,shoot:mouseP1.down||keys[' ']||false};
+  return{dx,dy,mx:mouseP1.x,my:mouseP1.y,shoot:mouseP1.down||keys[' ']||false,dash:keys['Shift']||false};
   // NOTE: mouseP1 is the *local* mouse — on the guest machine this IS the P2 mouse
 }
 
@@ -355,61 +357,93 @@ let t1=0,t2=0;
 // ══════════════════════════════════════
 // UPGRADE DEFINITIONS
 // ══════════════════════════════════════
-// Each upgrade has a maxPicks — how many times total (across both players) it can be selected
-// player upgrades: 1 pick per player (enforced by showing it as locked if that player already has it)
-// base upgrades: capped by maxLevel
+// ── UPGRADES ──
+// target:'player' = applies to the individual who picks it
+// target:'base'   = applies to the shared core/base
+// repeat:true     = can be picked again in future waves (stacks)
+// repeat:false    = once per player only
 const UPGRADES=[
-  {id:'speed',    target:'player', maxPicks:1, label:'OVERDRIVE',    icon:'⚡', color:'#00e5ff',
-   desc:'Move +25%  •  one time only',
+  // PLAYER — movement & survival
+  {id:'speed',     target:'player', repeat:false, label:'OVERCLOCK',      icon:'⚡', color:'#00e5ff',
+   desc:'Move speed +25%',
    apply:(p)=>{p.speed=Math.min(p.speed*1.25,5.5);}},
-  {id:'firerate', target:'player', maxPicks:1, label:'RAPID FIRE',   icon:'🔥', color:'#ff6b35',
-   desc:'Fire rate +35%  •  one time only',
-   apply:(p)=>{p.fireRate=Math.max(p.fireRate*0.68,10);}},
-  {id:'damage',   target:'player', maxPicks:1, label:'HEAVY ROUNDS', icon:'💥', color:'#ff2244',
-   desc:'Bullet damage ×1.5  •  one time only',
-   apply:(p)=>{p.dmg=parseFloat((p.dmg*1.5).toFixed(2));}},
-  {id:'spread',   target:'player', maxPicks:1, label:'SPREAD SHOT',  icon:'🔱', color:'#a855f7',
-   desc:'+2 extra bullets per shot  •  one time only',
-   apply:(p)=>{p.bulletCount=Math.min(p.bulletCount+2,3);}},
-  {id:'maxhp',    target:'player', maxPicks:1, label:'FORTIFY',      icon:'❤️', color:'#39ff14',
-   desc:'Max HP +50, heal 30  •  one time only',
-   apply:(p)=>{p.maxHp+=50;p.hp=Math.min(p.hp+30,p.maxHp);}},
-  {id:'shield',   target:'player', maxPicks:1, label:'ENERGY SHIELD',icon:'🛡', color:'#88aaff',
-   desc:'Absorb next hit  •  one time only',
+  {id:'dash',      target:'player', repeat:false, label:'BLINK DRIVE',    icon:'💨', color:'#00e5ff',
+   desc:'Press Shift to dash forward (short cooldown)',
+   apply:(p)=>{p.hasDash=true;p.dashCd=0;}},
+  {id:'maxhp',     target:'player', repeat:false, label:'ARMOUR PLATING', icon:'🧱', color:'#39ff14',
+   desc:'Max HP +60, heal to full',
+   apply:(p)=>{p.maxHp+=60;p.hp=p.maxHp;}},
+  {id:'vampiric',  target:'player', repeat:false, label:'LIFESTEAL',      icon:'🩸', color:'#ff2244',
+   desc:'Each kill restores 4 HP',
+   apply:(p)=>{p.lifesteal=true;}},
+  {id:'shield',    target:'player', repeat:false, label:'ENERGY SHIELD',  icon:'🛡', color:'#88aaff',
+   desc:'Absorbs the next hit you take',
    apply:(p)=>{p.shield=Math.min(p.shield+1,1);}},
-  {id:'turret',   target:'base',   maxPicks:2, label:'AUTO TURRET',  icon:'🔫', color:'#ffd700',
-   desc:'Core shoots nearest enemy (upgradeable x2)',
+
+  // PLAYER — firepower
+  {id:'firerate',  target:'player', repeat:false, label:'RAPID FIRE',     icon:'🔥', color:'#ff6b35',
+   desc:'Fire 40% faster',
+   apply:(p)=>{p.fireRate=Math.max(Math.round(p.fireRate*0.62),10);}},
+  {id:'damage',    target:'player', repeat:false, label:'HOLLOW POINT',   icon:'💥', color:'#ff2244',
+   desc:'Bullet damage ×1.6',
+   apply:(p)=>{p.dmg=parseFloat((p.dmg*1.6).toFixed(2));}},
+  {id:'spread',    target:'player', repeat:false, label:'SHOTGUN MOD',    icon:'🔱', color:'#a855f7',
+   desc:'Fire 2 extra bullets in a spread',
+   apply:(p)=>{p.bulletCount=Math.min(p.bulletCount+2,3);}},
+  {id:'pierce',    target:'player', repeat:false, label:'PIERCING ROUNDS',icon:'🏹', color:'#ff9900',
+   desc:'Bullets pass through enemies',
+   apply:(p)=>{p.pierce=true;}},
+  {id:'bigbullet', target:'player', repeat:false, label:'HEAVY CALIBRE',  icon:'🔵', color:'#4499ff',
+   desc:'Bullets 3× bigger, +1 damage',
+   apply:(p)=>{p.bigBullet=true;p.dmg+=1;}},
+
+  // BASE — repeatable
+  {id:'turret',    target:'base', repeat:true,  label:'AUTO TURRET',    icon:'🔫', color:'#ffd700',
+   desc:'Core fires at nearest enemy (stacks x2)',
    apply:()=>{baseUpgrades.turret.level=Math.min(baseUpgrades.turret.level+1,2);}},
-  {id:'wall',     target:'base',   maxPicks:2, label:'SHIELD WALL',  icon:'🛡️', color:'#ffd700',
-   desc:'Core takes 30% less damage per level (x2)',
+  {id:'wall',      target:'base', repeat:true,  label:'SHIELD WALL',    icon:'🛡️', color:'#ffd700',
+   desc:'Core takes 30% less damage (stacks x2)',
    apply:()=>{baseUpgrades.wall.level=Math.min(baseUpgrades.wall.level+1,2);}},
-  {id:'regen',    target:'base',   maxPicks:2, label:'REGEN FIELD',  icon:'💚', color:'#ffd700',
-   desc:'Core heals 10 HP between waves (x2)',
+  {id:'regen',     target:'base', repeat:true,  label:'REGEN FIELD',    icon:'💚', color:'#ffd700',
+   desc:'Core heals 10 HP per wave clear (stacks x2)',
    apply:()=>{baseUpgrades.regen.level=Math.min(baseUpgrades.regen.level+1,2);}},
+  {id:'aoe',       target:'base', repeat:false, label:'NOVA PULSE',     icon:'💫', color:'#ff44ff',
+   desc:'Core explodes for AoE damage when enemies get close',
+   apply:()=>{baseUpgrades.nova=true;}},
+  {id:'magnet',    target:'base', repeat:false, label:'LOOT MAGNET',    icon:'🧲', color:'#ffd700',
+   desc:'Pickups pull toward nearest player automatically',
+   apply:()=>{baseUpgrades.magnet=true;}},
 ];
 
+// Upgrade state during pick phase
 // Upgrade state during pick phase
 let upgPicks={p1:null,p2:null}; // chosen upgrade id per player
 let upgChoices=[]; // current 3 offered upgrades
 
-function rollUpgrades(){
-  // Filter out upgrades that are fully exhausted
-  const available=UPGRADES.filter(u=>{
-    if(u.target==='base'){
-      // Base: check against maxPicks (level)
-      if(u.id==='turret') return baseUpgrades.turret.level < u.maxPicks;
-      if(u.id==='wall')   return baseUpgrades.wall.level   < u.maxPicks;
-      if(u.id==='regen')  return baseUpgrades.regen.level  < u.maxPicks;
-    } else {
-      // Player: only show if neither player already has it (maxPicks:1 means once per player)
-      const p1has=upgrades.p1.includes(u.id);
-      const p2has=upgrades.p2.includes(u.id);
-      return !p1has || !p2has; // still show if at least one player can take it
+function isUpgradeExhausted(u){
+  if(u.target==='base'){
+    if(!u.repeat) return !!baseUpgrades[u.id]; // non-repeat base: check flag
+    if(u.id==='turret') return baseUpgrades.turret.level>=2;
+    if(u.id==='wall')   return baseUpgrades.wall.level>=2;
+    if(u.id==='regen')  return baseUpgrades.regen.level>=2;
+  } else {
+    if(!u.repeat){
+      // show if at least one player can still pick it
+      return upgrades.p1.includes(u.id) && upgrades.p2.includes(u.id);
     }
-    return true;
-  });
+  }
+  return false;
+}
+
+function rollUpgrades(){
+  const available=UPGRADES.filter(u=>!isUpgradeExhausted(u));
   const shuffled=[...available].sort(()=>Math.random()-0.5);
-  return shuffled.slice(0,Math.min(3,shuffled.length));
+  const picks=shuffled.slice(0,3);
+  // If fewer than 3 available, pad with a always-available "skip" sentinel
+  while(picks.length<3) picks.push({id:'skip',target:'skip',repeat:true,
+    label:'SKIP',icon:'⏭',color:'#2a4050',
+    desc:'No upgrade this wave',apply:()=>{}});
+  return picks;
 }
 
 // ══════════════════════════════════════
@@ -434,7 +468,7 @@ function onData(d){
   if(d.type==='upgPick'&&myRole==='host'){
     // Guest picked an upgrade
     upgPicks.p2=d.id;
-    renderUpgrades(); // refresh so host can see
+    renderUpgrades(true); // refresh so host can see
     checkBothPicked();
   }
   if(d.type==='state'&&myRole==='guest') applyState(d.s);
@@ -492,13 +526,43 @@ function update(dt){
   const p2Angle=Math.atan2(p2raw.my-players.p2.y, p2raw.mx-players.p2.x);
   const p2i={dx:p2raw.dx,dy:p2raw.dy,angle:p2Angle,shoot:p2raw.shoot||false};
 
-  move(players.p1,p1i,dt); move(players.p2,p2i,dt);
+  if(players.p1.hp>0) move(players.p1,p1i,dt);
+  if(players.p2.hp>0) move(players.p2,p2i,dt);
+  // Dash
+  for(const [pk,pv,inp] of [['p1',players.p1,p1i],['p2',players.p2,p2i]]){
+    if(pv.hasDash){
+      pv.dashCd=Math.max(0,pv.dashCd-dt);
+      if(inp.dash&&pv.dashCd<=0&&pv.hp>0){
+        pv.x+=Math.cos(pv.angle)*80;pv.y+=Math.sin(pv.angle)*80;
+        pv.x=Math.max(12,Math.min(W-12,pv.x));pv.y=Math.max(12,Math.min(H-12,pv.y));
+        pv.dashCd=90;
+        sparks(pv.x,pv.y,pk==='p1'?'#00e5ff':'#ff6b35',12);
+      }
+    }
+  }
   players.p1.angle=p1i.angle; players.p2.angle=p2i.angle;
 
-  // Shoot
+  // Shoot — dead players can't shoot
   t1=Math.max(0,t1-dt); t2=Math.max(0,t2-dt);
-  if(p1i.shoot&&t1<=0){fireSpread('p1',players.p1.x,players.p1.y,p1i.angle,players.p1);t1=players.p1.fireRate;}
-  if(p2i.shoot&&t2<=0){fireSpread('p2',players.p2.x,players.p2.y,p2i.angle,players.p2);t2=players.p2.fireRate;}
+  if(players.p1.hp>0&&p1i.shoot&&t1<=0){fireSpread('p1',players.p1.x,players.p1.y,p1i.angle,players.p1);t1=players.p1.fireRate;}
+  if(players.p2.hp>0&&p2i.shoot&&t2<=0){fireSpread('p2',players.p2.x,players.p2.y,p2i.angle,players.p2);t2=players.p2.fireRate;}
+
+  // Nova pulse
+  if(baseUpgrades.nova){
+    novaTimer=Math.max(0,novaTimer-dt);
+    if(novaTimer<=0){
+      let hit=false;
+      for(let i=enemies.length-1;i>=0;i--){
+        const e=enemies[i];
+        if(Math.hypot(e.x-core.x,e.y-core.y)<100){
+          e.hp-=3;sparks(e.x,e.y,'#ff44ff',6);hit=true;
+          if(e.hp<=0){sparks(e.x,e.y,'#ff2244',14);maybePickup(e.x,e.y);score+=10;enemies.splice(i,1);enemiesLeft--;}
+        }
+      }
+      if(hit) novaTimer=45;
+      else novaTimer=10;
+    }
+  }
 
   // Auto-turret
   if(baseUpgrades.turret.level>0){
@@ -514,7 +578,7 @@ function update(dt){
           const a=turretAngle+(i-(shots-1)/2)*0.15;
           bullets.push({x:core.x,y:core.y,vx:Math.cos(a)*9,vy:Math.sin(a)*9,life:90,color:'#ffd700',dmg:2});
         }
-        turretTimer=Math.max(1.2,2.2-baseUpgrades.turret.level*0.4);
+        turretTimer=Math.max(80,140-baseUpgrades.turret.level*25);
       }
     }
   }
@@ -527,17 +591,19 @@ function update(dt){
     let hit=false;
     for(let j=enemies.length-1;j>=0;j--){
       const e=enemies[j];
-      if((b.x-e.x)**2+(b.y-e.y)**2<(e.r+3)**2){
+      const br=b.r||3; if((b.x-e.x)**2+(b.y-e.y)**2<(e.r+br)**2){
         const dmg=b.dmg||1;
         e.hp-=dmg;
         sparks(b.x,b.y,b.color,4);
-        bullets.splice(i,1);hit=true;
+        if(!b.pierce) bullets.splice(i,1);
+        hit=true;
         if(e.hp<=0){
           sparks(e.x,e.y,'#ff2244',14);maybePickup(e.x,e.y);
+          if(b.owner&&players[b.owner]?.lifesteal) players[b.owner].hp=Math.min(players[b.owner].maxHp,players[b.owner].hp+4);
           score+=e.type==='tank'?25:e.type==='fast'?15:10;
           enemies.splice(j,1);enemiesLeft--;
         }
-        break;
+        if(!b.pierce) break;
       }
     }
   }
@@ -546,11 +612,18 @@ function update(dt){
   for(let i=enemies.length-1;i>=0;i--){
     const e=enemies[i];
     let best={x:core.x,y:core.y},bd=Infinity;
-    for(const t of[{x:core.x,y:core.y},{x:players.p1.x,y:players.p1.y},{x:players.p2.x,y:players.p2.y}]){
+    const targets=[{x:core.x,y:core.y}];
+    if(players.p1.hp>0) targets.push({x:players.p1.x,y:players.p1.y});
+    if(players.p2.hp>0) targets.push({x:players.p2.x,y:players.p2.y});
+    for(const t of targets){
       const d=Math.hypot(t.x-e.x,t.y-e.y);if(d<bd){bd=d;best=t;}
     }
     const ang=Math.atan2(best.y-e.y,best.x-e.x);
     e.angle=ang;e.x+=Math.cos(ang)*e.speed*dt;e.y+=Math.sin(ang)*e.speed*dt;
+    if(baseUpgrades.nova&&Math.hypot(e.x-core.x,e.y-core.y)<80){
+      // Nova: deal 1 damage to all enemies in 80px radius every 60 frames
+      // Handled by novaTimer below
+    }
     if(Math.hypot(e.x-core.x,e.y-core.y)<core.r+e.r){
       const dmgMult=Math.max(0.1,1-baseUpgrades.wall.level*0.35);
       coreHp=Math.max(0,coreHp-(e.type==='tank'?2:1)*dt*0.5*dmgMult);
@@ -558,7 +631,7 @@ function update(dt){
       if(coreHp<=0){endGame();return;}
     }
     for(const pv of[players.p1,players.p2]){
-      if(Math.hypot(e.x-pv.x,e.y-pv.y)<e.r+12){
+      if(pv.hp>0&&Math.hypot(e.x-pv.x,e.y-pv.y)<e.r+12){
         if(pv.shield>0){pv.shield--;sparks(pv.x,pv.y,'#00e5ff',8);}
         else pv.hp=Math.max(0,pv.hp-0.45*dt);
       }
@@ -572,6 +645,14 @@ function update(dt){
   }
 
   // Pickups
+  for(let i=pickups.length-1;i>=0;i--){
+    const pk=pickups[i];
+    if(baseUpgrades.magnet){
+      let closest=null,cd=Infinity;
+      for(const pv of[players.p1,players.p2]){if(pv.hp>0){const d=Math.hypot(pk.x-pv.x,pk.y-pv.y);if(d<cd){cd=d;closest=pv;}}}
+      if(closest&&cd<200){const a=Math.atan2(closest.y-pk.y,closest.x-pk.x);pk.x+=Math.cos(a)*3*dt;pk.y+=Math.sin(a)*3*dt;}
+    }
+  }
   for(let i=pickups.length-1;i>=0;i--){
     const pk=pickups[i];pk.life-=dt;
     if(pk.life<=0){pickups.splice(i,1);continue;}
@@ -587,8 +668,11 @@ function update(dt){
   // Wave clear
   if(!betweenWaves&&enemies.length===0&&enemiesLeft===0){
     betweenWaves=true;
+    // Respawn dead players
+    if(players.p1.hp<=0){players.p1.hp=60;players.p1.x=220;players.p1.y=310;}
+    if(players.p2.hp<=0){players.p2.hp=60;players.p2.x=680;players.p2.y=310;}
     // Regen base if unlocked
-    if(baseUpgrades.regen.level>0) coreHp=Math.min(100,coreHp+15*baseUpgrades.regen.level);
+    if(baseUpgrades.regen.level>0) coreHp=Math.min(100,coreHp+10*baseUpgrades.regen.level);
     showUpgradeScreen(true);
   }
   updateHUD();
@@ -604,10 +688,12 @@ function move(p,inp,dt){
 
 function fireSpread(owner,x,y,angle,p){
   const n=p.bulletCount,spread=0.18;
+  const r=p.bigBullet?5:3;
   for(let i=0;i<n;i++){
     const a=angle+(i-(n-1)/2)*spread;
     bullets.push({x,y,vx:Math.cos(a)*8.5,vy:Math.sin(a)*8.5,life:85,
-      color:owner==='p1'?'#00e5ff':'#ff6b35',dmg:p.dmg});
+      color:owner==='p1'?'#00e5ff':'#ff6b35',dmg:p.dmg,
+      pierce:p.pierce||false,r,owner});
   }
 }
 function sparks(x,y,color,n=8){
@@ -668,28 +754,32 @@ function renderUpgrades(isHost){
 
     const pickedByMe=upgPicks[myKey]===u.id;
     const pickedByOther=upgPicks[otherKey]===u.id;
-    const iAlreadyHaveIt=u.target==='player'&&upgrades[myKey].includes(u.id);
     const alreadyPicked=!!upgPicks[myKey];
+    // Non-repeat player upgrade that I already own — dim it but still selectable (skip equivalent)
+    const iAlreadyHaveIt=u.target==='player'&&!u.repeat&&upgrades[myKey].includes(u.id);
+    // Grey out if I already made my pick this wave and it wasn't this card
+    const dimmed=(alreadyPicked&&!pickedByMe);
 
     if(pickedByMe) div.classList.add('picked');
-    // Lock card if: I already own this upgrade, OR I already made a pick this wave
-    const locked=iAlreadyHaveIt||(alreadyPicked&&!pickedByMe);
-    if(locked) div.classList.add('locked');
+    if(dimmed||iAlreadyHaveIt) div.classList.add('locked');
 
-    const tagColor=u.target==='base'?'var(--core)':u.color;
+    const tagColor=u.target==='base'?'var(--core)':u.target==='skip'?'var(--dim)':u.color;
+    let tag=u.target==='base'?'// BASE':u.target==='skip'?'// PASS':'// PLAYER';
     let statusLine='';
-    if(iAlreadyHaveIt) statusLine='<div style="font-size:.58rem;color:var(--dim);margin-top:6px;letter-spacing:.1em">Already owned</div>';
-    else if(pickedByMe) statusLine='<div style="font-size:.58rem;color:var(--green);margin-top:6px;letter-spacing:.1em">✓ YOUR PICK</div>';
-    else if(pickedByOther) statusLine='<div style="font-size:.58rem;color:var(--p'+(myKey==='p1'?'2':'1')+');margin-top:6px;letter-spacing:.1em">'+(myKey==='p1'?'P2':'P1')+' picked this</div>';
+    if(iAlreadyHaveIt) statusLine='<div style="font-size:.55rem;color:var(--dim);margin-top:5px">Already owned</div>';
+    else if(pickedByMe) statusLine='<div style="font-size:.55rem;color:var(--green);margin-top:5px">✓ YOUR PICK</div>';
+    else if(pickedByOther) statusLine='<div style="font-size:.55rem;color:var(--'+(myKey==='p1'?'p2':'p1')+');margin-top:5px">'+(myKey==='p1'?'P2':'P1')+' chose this</div>';
 
     div.innerHTML=
-      '<div class="utag" style="color:'+tagColor+'">'+(u.target==='base'?'// BASE':'// PLAYER')+'</div>'+
+      '<div class="utag" style="color:'+tagColor+'">'+tag+'</div>'+
       '<div class="uicon">'+u.icon+'</div>'+
       '<div class="uname" style="color:'+u.color+'">'+u.label+'</div>'+
       '<div class="udesc">'+u.desc+'</div>'+
       statusLine;
 
-    if(!locked&&!pickedByMe&&!alreadyPicked){
+    // Always clickable unless already picked this wave
+    if(!alreadyPicked&&!pickedByMe){
+      div.style.cursor='pointer';
       div.addEventListener('click',()=>pickUpgrade(u.id));
     }
     grid.appendChild(div);
@@ -796,16 +886,16 @@ function endGame(){gameRunning=false;showGameOver(true);}
 // ══════════════════════════════════════
 function resetPlayer(p,x,y,angle){
   p.x=x;p.y=y;p.hp=100;p.maxHp=100;p.angle=angle;
-  p.speed=3;p.fireRate=20;p.dmg=1;p.bulletCount=1;p.shield=0;
+  p.speed=3;p.fireRate=20;p.dmg=1;p.bulletCount=1;p.shield=0;p.pierce=false;p.bigBullet=false;p.lifesteal=false;p.hasDash=false;p.dashCd=0;
 }
 function startGame(){
   $('lobby').style.display='none';
   $('gameWrap').style.display='flex';
   hideModal('upgCover');hideModal('overCover');
   gameRunning=true;wave=1;score=0;coreHp=100;enemiesLeft=0;betweenWaves=false;
-  t1=0;t2=0;turretTimer=0;turretAngle=0;
-  resetPlayer(players.p1,200,250,0);
-  resetPlayer(players.p2,560,250,Math.PI);
+  t1=0;t2=0;turretTimer=0;turretAngle=0;novaTimer=0;
+  resetPlayer(players.p1,220,310,0);
+  resetPlayer(players.p2,680,310,Math.PI);
   upgrades.p1=[];upgrades.p2=[];
   baseUpgrades={
     turret:{level:0,maxLevel:3},
@@ -845,7 +935,7 @@ function draw(){
   for(const e of enemies)drawEnemy(e);
   for(const b of bullets){
     ctx.save();ctx.shadowColor=b.color;ctx.shadowBlur=9;ctx.fillStyle=b.color;
-    ctx.beginPath();ctx.arc(b.x,b.y,3,0,Math.PI*2);ctx.fill();ctx.restore();
+    ctx.beginPath();ctx.arc(b.x,b.y,b.r||3,0,Math.PI*2);ctx.fill();ctx.restore();
   }
   drawShip(players.p1,'p1');
   drawShip(players.p2,'p2');
